@@ -1,0 +1,28 @@
+{
+  "name": "Riempifrigo",
+  "short_name": "Riempifrigo",
+  "description": "Lista della spesa con checklist, suggerimenti e report",
+  "lang": "it",
+  "id": "./",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#F1F4EE",
+  "theme_color": "#2E6A3E",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icon-maskable.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "Fai la spesa", "short_name": "Spesa", "url": "./#spesa", "icons": [{ "src": "icon-192.png", "sizes": "192x192" }] },
+    { "name": "Aggiungi da una ricetta", "short_name": "Ricetta", "url": "./#ricetta", "icons": [{ "src": "icon-192.png", "sizes": "192x192" }] }
+  ],
+  "share_target": {
+    "action": "./",
+    "method": "GET",
+    "enctype": "application/x-www-form-urlencoded",
+    "params": { "title": "title", "text": "text", "url": "url" }
+  }
+}
