@@ -3,12 +3,18 @@ package it.riempifrigo.app;
 import android.app.Activity;
 import android.content.ContentValues;
 import android.content.Intent;
+import android.content.res.Configuration;
+import android.graphics.Insets;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
 import android.provider.MediaStore;
+import android.view.View;
+import android.view.WindowInsets;
+import android.view.WindowInsetsController;
 import android.view.WindowManager;
+import android.widget.FrameLayout;
 import android.webkit.JavascriptInterface;
 import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
@@ -39,7 +45,26 @@ public class MainActivity extends Activity {
     protected void onCreate(Bundle state) {
         super.onCreate(state);
         web = new WebView(this);
-        setContentView(web);
+        // Android 15 draws apps edge to edge: pad the page clear of the status bar, navigation bar and keyboard.
+        FrameLayout root = new FrameLayout(this);
+        root.setBackgroundColor(getColor(R.color.bg));
+        web.setBackgroundColor(getColor(R.color.bg));
+        root.addView(web);
+        setContentView(root);
+        root.setOnApplyWindowInsetsListener((v, in) -> {
+            if (Build.VERSION.SDK_INT >= 30) {
+                Insets i = in.getInsets(WindowInsets.Type.systemBars() | WindowInsets.Type.ime() | WindowInsets.Type.displayCutout());
+                v.setPadding(i.left, i.top, i.right, i.bottom);
+                return WindowInsets.CONSUMED;
+            }
+            v.setPadding(in.getSystemWindowInsetLeft(), in.getSystemWindowInsetTop(), in.getSystemWindowInsetRight(), in.getSystemWindowInsetBottom());
+            return in.consumeSystemWindowInsets();
+        });
+        if (Build.VERSION.SDK_INT >= 30) {
+            boolean night = (getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES;
+            int light = WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS | WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS;
+            getWindow().getInsetsController().setSystemBarsAppearance(night ? 0 : light, light);
+        }
 
         final WebViewAssetLoader loader = new WebViewAssetLoader.Builder()
                 .addPathHandler("/www/", new WebViewAssetLoader.AssetsPathHandler(this))
