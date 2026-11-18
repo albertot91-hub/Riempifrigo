@@ -860,11 +860,17 @@ function settingsSheet(){
     + '<div class="btns"><button class="btn" data-act="sheet-close">Chiudi</button></div>');
 }
 function bkSave(){
+  const fname = "riempifrigo-backup-" + localDay(new Date().toISOString()) + ".json";
+  if (window.RiempiAndroid){
+    if (RiempiAndroid.saveFile(fname, JSON.stringify(backupObj(), null, 1))){ meta("lastBackup", new Date().toISOString()); toast("Backup salvato nella cartella Download"); }
+    else toast("Salvataggio non riuscito: usa Copia dati e incollali in una nota.");
+    return;
+  }
   try {
     const blob = new Blob([JSON.stringify(backupObj(), null, 1)], { type: "application/json" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
-    a.download = "riempifrigo-backup-" + localDay(new Date().toISOString()) + ".json";
+    a.download = fname;
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(a.href), 4000);
     meta("lastBackup", new Date().toISOString());
@@ -914,8 +920,8 @@ async function bkImport(){
 
 /* ---------- Tabs & wake lock ---------- */
 let wake = null;
-async function wakeOn(){ try { if (navigator.wakeLock && !wake){ wake = await navigator.wakeLock.request("screen"); wake.addEventListener("release", () => { wake = null; }); } } catch(e){ wake = null; } }
-function wakeOff(){ try { if (wake) wake.release(); } catch(e){} wake = null; }
+async function wakeOn(){ if (window.RiempiAndroid){ RiempiAndroid.keepAwake(true); return; } try { if (navigator.wakeLock && !wake){ wake = await navigator.wakeLock.request("screen"); wake.addEventListener("release", () => { wake = null; }); } } catch(e){ wake = null; } }
+function wakeOff(){ if (window.RiempiAndroid){ RiempiAndroid.keepAwake(false); return; } try { if (wake) wake.release(); } catch(e){} wake = null; }
 document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && tab === "spesa") wakeOn(); });
 function setTab(t){
   if (!VALID.includes(t)) t = "lista";
@@ -924,6 +930,13 @@ function setTab(t){
   if (t === "spesa") wakeOn(); else wakeOff();
   window.scrollTo(0,0);
 }
+
+/* Android app: Back closes the open sheet, then returns to Lista; false lets the app close. */
+window.riempiBack = () => {
+  if (!$("#sheet").hidden){ closeSheet(); return true; }
+  if (tab !== "lista"){ setTab("lista"); return true; }
+  return false;
+};
 
 /* ---------- Events ---------- */
 $("#addForm").addEventListener("submit", e => {
@@ -1014,7 +1027,7 @@ if (shTitle || shText || shUrl){
   recipeSheet();
 }
 try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch(e){}
-if ("serviceWorker" in navigator) window.addEventListener("load", () => { navigator.serviceWorker.register("sw.js").catch(() => {}); });
+if ("serviceWorker" in navigator && !window.RiempiAndroid) window.addEventListener("load", () => { navigator.serviceWorker.register("sw.js").catch(() => {}); });
 })();
 </script>
 </body>

@@ -1,0 +1,49 @@
+plugins { id "com.android.application" }
+
+// The web app (index.html, sw.js, icons) lives in the repo root: copy it into the APK's assets.
+def webDir = layout.buildDirectory.dir("webassets")
+tasks.register("copyWeb", Copy) {
+    from(rootProject.file("..")) {
+        include "index.html", "sw.js", "manifest.webmanifest", "icon-*.png"
+    }
+    into webDir.map { it.dir("www") }
+}
+preBuild.dependsOn "copyWeb"
+
+def ksProps = new Properties()
+def ksFile = rootProject.file("keystore.properties")
+if (ksFile.exists()) ksFile.withInputStream { ksProps.load(it) }
+
+android {
+    namespace "it.riempifrigo.app"
+    compileSdk 35
+    defaultConfig {
+        applicationId "it.riempifrigo.app"
+        minSdk 24
+        targetSdk 35
+        versionCode 1
+        versionName "1.0"
+    }
+    sourceSets { main { assets.srcDirs += webDir.get().asFile } }
+    signingConfigs {
+        release {
+            if (ksFile.exists()) {
+                storeFile rootProject.file(ksProps["storeFile"])
+                storePassword ksProps["storePassword"]
+                keyAlias ksProps["keyAlias"]
+                keyPassword ksProps["keyPassword"]
+            }
+        }
+    }
+    buildTypes {
+        release {
+            minifyEnabled false
+            if (ksFile.exists()) signingConfig signingConfigs.release
+        }
+    }
+    compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
+}
+
+dependencies {
+    implementation "androidx.webkit:webkit:1.12.1"
+}
