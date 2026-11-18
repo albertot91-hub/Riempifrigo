@@ -1,7 +1,7 @@
 /* Riempifrigo service worker: keeps the app working offline.
    App files: served from cache at once, refreshed in the background (updates show on the next launch).
    Google Fonts: cached the first time they load. */
-const CACHE = "riempifrigo-v2";
+const CACHE = "riempifrigo-v3";
 const SHELL = ["./", "./index.html", "./manifest.webmanifest", "./icon-192.png", "./icon-512.png", "./icon-maskable.png"];
 
 self.addEventListener("install", e => {

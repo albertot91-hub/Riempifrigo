@@ -181,7 +181,8 @@ details.once p{margin:6px 4px 0;font-size:.9rem;color:var(--muted)}
 .section{display:flex;flex-direction:column;gap:8px;padding-top:4px}
 .section + .section{border-top:1px solid var(--line);padding-top:14px}
 
-.toast{position:fixed;left:50%;bottom:calc(var(--nav-h) + 16px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);z-index:50;background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:12px;font-size:.92rem;max-width:calc(100% - 32px);box-shadow:0 8px 24px rgb(0 0 0 / .2)}
+.toast{display:flex;align-items:center;gap:14px;position:fixed;left:50%;bottom:calc(var(--nav-h) + 16px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);z-index:50;background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:12px;font-size:.92rem;max-width:calc(100% - 32px);box-shadow:0 8px 24px rgb(0 0 0 / .2)}
+.toast button{flex:none;border:0;background:none;color:inherit;font-weight:700;text-transform:uppercase;letter-spacing:.04em;font-size:.82rem;padding:4px 2px;text-decoration:underline;text-underline-offset:3px}
 .flash{animation:fl 1s ease}
 @keyframes fl{0%,40%{background:var(--due-soft)}100%{background:transparent}}
 @media (prefers-reduced-motion: reduce){.bar i{transition:none}.flash{animation:none}}
@@ -492,7 +493,11 @@ function productStats(p){
   const n = days.length;
   const lastMs = dates.length ? Math.max(...dates.map(d => new Date(d).getTime())) : null;
   const since = lastMs ? (startOfDay(Date.now()) - startOfDay(lastMs)) / DAY : null;
-  const ev = n >= 2 ? (dayMs(days[n-1]) - dayMs(days[0])) / DAY / (n-1) : null;
+  // Median of the last 5 gaps: one skipped or extra trip does not throw the estimate off
+  const gaps = [];
+  for (let i = 1; i < n; i++) gaps.push((dayMs(days[i]) - dayMs(days[i-1])) / DAY);
+  const rg = gaps.slice(-5).sort((a,b) => a-b), h = rg.length >> 1;
+  const ev = rg.length ? (rg.length % 2 ? rg[h] : (rg[h-1] + rg[h]) / 2) : null;
   const ratio = ev ? since / ev : null;
   let status = "single";
   if (ratio != null) status = ratio >= 1 ? "late" : ratio >= 0.75 ? "due" : "ok";
@@ -509,6 +514,13 @@ function addItem(name, qty, cat, from, quiet){
   const existing = itemsArr().find(i => norm(i.name) === key);
   if (existing){
     if (quiet) return false;
+    if (qty && qty !== existing.qty){
+      put("items", existing.id, Object.assign({}, S.data.items[existing.id], { qty }));
+      toast(existing.name + ": quantità aggiornata a " + qty);
+      const r = document.querySelector('[data-row="'+existing.id+'"]');
+      if (r) r.classList.add("flash");
+      return true;
+    }
     toast(name + " è già in lista");
     const el = document.querySelector('[data-row="'+existing.id+'"]');
     if (el){ el.classList.remove("flash"); void el.offsetWidth; el.classList.add("flash"); }
@@ -520,6 +532,50 @@ function addItem(name, qty, cat, from, quiet){
   if (from) obj.from = String(from).slice(0,60);
   put("items", uid("i"), obj);
   return true;
+}
+function splitEntries(raw){
+  let parts = String(raw||"").split(/\s*(?:,(?!\d)|;|\n)\s*/);
+  if (parts.length > 1) parts = parts.flatMap(p => p.split(/\s+e\s+/i));
+  return parts.map(x => x.trim()).filter(Boolean);
+}
+function addMany(parts){
+  let n = 0;
+  parts.forEach(x => { const p = parseEntry(x); if (p.name && addItem(p.name, p.qty, null, null, true)) n++; });
+  const skip = parts.length - n;
+  if (!n){ toast("Erano già tutti in lista"); return; }
+  toast((n === 1 ? "Aggiunto 1 prodotto" : "Aggiunti " + n + " prodotti") + (skip ? " (" + skip + " già in lista)" : ""));
+}
+function removeItem(id){
+  const it = S.data.items[id]; if (!it) return;
+  del("items", id);
+  toast(it.name + " tolto dalla lista", "Annulla", () => put("items", id, it));
+}
+function clearList(){
+  const old = S.data.items;
+  if (!Object.keys(old).length) return;
+  S.data.items = {}; lsSet("items", {}); renderAll();
+  toast("Lista svuotata", "Annulla", () => { S.data.items = Object.assign({}, old, S.data.items); lsSet("items", S.data.items); renderAll(); });
+}
+function uncheckAll(){
+  const m = {};
+  Object.entries(S.data.items).forEach(([id,v]) => { m[id] = Object.assign({}, v, { checked: false }); });
+  S.data.items = m; lsSet("items", m); renderAll();
+}
+function listText(){
+  const items = itemsArr().filter(i => !i.checked);
+  let t = "Lista della spesa";
+  groupByCat(items).forEach(g => {
+    t += "\n\n" + (CAT_NAME[g.cat] || "Altro") + "\n" + g.items.map(i => "- " + i.name + (i.qty ? " (" + i.qty + ")" : "")).join("\n");
+  });
+  return t;
+}
+async function shareList(){
+  if (!itemsArr().some(i => !i.checked)){ toast("Niente da condividere: è tutto nel carrello"); return; }
+  const text = listText();
+  if (window.RiempiAndroid){ RiempiAndroid.shareText(text); return; }
+  if (navigator.share){ try { await navigator.share({ text }); return; } catch(e){ if (e && e.name === "AbortError") return; } }
+  try { await navigator.clipboard.writeText(text); toast("Lista copiata negli appunti"); }
+  catch(e){ toast("Condivisione non riuscita"); }
 }
 function toggleItem(id){ const it = S.data.items[id]; if (it) put("items", id, Object.assign({}, it, { checked: !it.checked })); }
 function finishShopping(){
@@ -594,6 +650,7 @@ function renderList(){
     });
     h += '</div></div>';
   });
+  h += '<div class="btns"><button class="btn" data-act="share">Condividi lista</button><button class="btn danger" data-act="clear">Svuota lista</button></div>';
   wrap.innerHTML = h + '</div>';
 }
 const TICK = '<svg viewBox="0 0 16 16"><path d="M3 8.5l3.2 3L13 4.5"/></svg>';
@@ -624,7 +681,7 @@ function renderShop(){
   if (done.length){
     h += '<div class="group"><div class="groupHead"><span class="eyebrow">Nel carrello</span><span class="eyebrow">'+done.length+'</span></div><div class="card">';
     done.forEach(i => { h += shopRow(i); });
-    h += '</div></div>';
+    h += '</div></div><div class="btns"><button class="btn" data-act="uncheck">Togli tutte le spunte</button></div>';
   }
   wrap.innerHTML = h + '</div>';
 }
@@ -691,6 +748,7 @@ function renderReport(){
   if (once.length){
     h += '<details class="once"><summary>'+once.length+(once.length===1?' prodotto comprato in una sola spesa':' prodotti comprati in una sola spesa')+'</summary><p>'+once.map(p => esc(p.name)).join(", ")+'</p></details>';
   }
+  if (cat.length) h += '<div class="btns"><button class="btn" data-act="products">Gestisci prodotti</button></div>';
   if (trips.length){
     h += '<div class="group"><div class="groupHead"><span class="eyebrow">Ultime spese</span></div><div class="receipts">';
     trips.slice(0,4).forEach(t => {
@@ -727,7 +785,7 @@ function search(q){
 function renderAc(){
   const box = $("#ac");
   const q = $("#addInput").value;
-  acItems = search(parseEntry(q).name);
+  acItems = splitEntries(q).length > 1 ? [] : search(parseEntry(q).name);
   if (!acItems.length || !q.trim()){ box.hidden = true; acSel = -1; return; }
   box.innerHTML = acItems.map((r,i) => '<button type="button" role="option" class="'+(i===acSel?'sel':'')+'" data-ac="'+i+'"><span>'+esc(r.name)+'</span><span class="meta'+(r.inList?' in':'')+'">'+(r.inList ? "già in lista" : esc(r.meta))+'</span></button>').join("");
   box.hidden = false;
@@ -746,10 +804,12 @@ function closeSheet(){
   $("#sheetBack").hidden = true; $("#sheet").hidden = true; $("#sheetBody").innerHTML = "";
   if (lastFocus && lastFocus.focus) try { lastFocus.focus({preventScroll:true}); } catch(e){}
 }
-let toastT;
-function toast(msg){
-  const t = $("#toast"); t.textContent = msg; t.hidden = false;
-  clearTimeout(toastT); toastT = setTimeout(() => { t.hidden = true; }, 2800);
+let toastT, toastFn = null;
+function toast(msg, action, fn){
+  const t = $("#toast");
+  t.innerHTML = '<span>'+esc(msg)+'</span>' + (action ? '<button type="button" data-toast="1">'+esc(action)+'</button>' : '');
+  toastFn = action ? fn : null; t.hidden = false;
+  clearTimeout(toastT); toastT = setTimeout(() => { t.hidden = true; toastFn = null; }, action ? 5000 : 2800);
 }
 function editSheet(id){
   const it = S.data.items[id]; if (!it) return;
@@ -769,6 +829,40 @@ function finishSheet(){
     + '</ul><div class="tot"><span>ARTICOLI</span><span>'+done.length+'</span></div></div>'
     + '<p class="note">I prodotti spuntati vanno nello storico e spariscono dalla lista.'+(left ? ' '+(left===1?'Il prodotto non preso resta':'I '+left+' prodotti non presi restano')+' in lista.' : '')+'</p>'
     + '<div class="btns"><button class="btn" data-act="sheet-close">Annulla</button><button class="btn primary" data-act="sheet-finish">Registra spesa</button></div>');
+}
+
+/* ---------- Product history ---------- */
+function productsSheet(){
+  const list = catalogArr().sort((a,b) => a.name.localeCompare(b.name, "it"));
+  openSheet('<h2>Prodotti nello storico</h2>'
+    + '<p class="note">Correggi un nome sbagliato, cambia reparto o elimina un prodotto. Se dai a un prodotto il nome di un altro, i due si uniscono.</p>'
+    + (list.length ? '<div class="card" id="prodList">' + list.map(p => '<div class="rec"><div class="info"><div class="n">'+esc(p.name)+'</div><div class="d">'+esc(CAT_NAME[p.cat]||"Altro")+' · '+p.st.count+'×</div></div><button class="btn small" data-act="prod-edit" data-id="'+esc(p.id)+'">Modifica</button></div>').join("") + '</div>' : '<div class="empty" id="prodList">Lo storico è vuoto.</div>')
+    + '<div class="btns"><button class="btn" data-act="sheet-close">Chiudi</button></div>');
+}
+function productSheet(id){
+  const p = S.data.catalog[id]; if (!p) return productsSheet();
+  openSheet('<h2>Modifica prodotto</h2>'
+    + '<div class="field"><label for="prodName">Nome</label><input id="prodName" value="'+esc(p.name)+'"></div>'
+    + '<div class="field"><label for="prodCat">Reparto</label><select id="prodCat">'+CATS.map(c => '<option value="'+c[0]+'"'+(c[0]===(p.cat||"altro")?' selected':'')+'>'+c[1]+'</option>').join("")+'</select></div>'
+    + '<div class="btns"><button class="btn danger" data-act="prod-del" data-id="'+esc(id)+'">Elimina</button><button class="btn primary" data-act="prod-save" data-id="'+esc(id)+'">Salva</button></div>'
+    + '<div class="btns"><button class="btn" data-act="products">Indietro</button></div>');
+}
+function productSave(id){
+  const p = S.data.catalog[id]; if (!p) return productsSheet();
+  const name = cap($("#prodName").value.trim()) || p.name, catv = $("#prodCat").value;
+  const c = Object.assign({}, S.data.catalog);
+  delete c[id];
+  const key = slug(name), other = c[key];
+  const dates = [...new Set([...(other && other.dates || []), ...(p.dates || [])])].sort().slice(-80);
+  c[key] = { name, cat: catv, dates, lastQty: p.lastQty || (other && other.lastQty) || "" };
+  S.data.catalog = c; lsSet("catalog", c); renderAll();
+  productsSheet();
+  toast(other ? name + ": prodotti uniti" : "Prodotto aggiornato");
+}
+function productDel(id){
+  const p = S.data.catalog[id]; if (!p) return;
+  del("catalog", id); productsSheet();
+  toast(p.name + " eliminato dallo storico", "Annulla", () => { put("catalog", id, p); if ($("#prodList")) productsSheet(); });
 }
 
 /* ---------- Recipe reader (offline) ---------- */
@@ -943,7 +1037,11 @@ $("#addForm").addEventListener("submit", e => {
   e.preventDefault();
   const inp = $("#addInput");
   if (acSel >= 0 && acItems[acSel]) addItem(acItems[acSel].name, parseEntry(inp.value).qty);
-  else { const p = parseEntry(inp.value); if (p.name) addItem(p.name, p.qty); }
+  else {
+    const parts = splitEntries(inp.value);
+    if (parts.length > 1) addMany(parts);
+    else { const p = parseEntry(inp.value); if (p.name) addItem(p.name, p.qty); }
+  }
   inp.value = ""; acSel = -1; renderAc(); inp.focus();
 });
 $("#addInput").addEventListener("input", () => { acSel = -1; renderAc(); });
@@ -969,17 +1067,19 @@ document.addEventListener("click", e => {
   const id = b.dataset.id, act = b.dataset.act;
   switch (act){
     case "quick": addItem(b.dataset.name); if (tab === "report") toast(b.dataset.name + " aggiunto alla lista"); break;
-    case "remove": { const it = S.data.items[id]; del("items", id); if (it) toast(it.name + " tolto dalla lista"); break; }
+    case "remove": removeItem(id); break;
     case "edit": editSheet(id); break;
     case "toggle": toggleItem(id); break;
     case "finish": finishSheet(); break;
     case "sheet-close": closeSheet(); break;
     case "sheet-finish": finishShopping(); break;
-    case "sheet-del": del("items", id); closeSheet(); break;
+    case "sheet-del": closeSheet(); removeItem(id); break;
     case "sheet-save": {
       const it = S.data.items[id]; if (!it){ closeSheet(); break; }
       const name = cap($("#editName").value.trim()) || it.name;
       const cat = $("#editCat").value, qty = $("#editQty").value.trim();
+      const dup = itemsArr().find(i => i.id !== id && norm(i.name) === norm(name));
+      if (dup){ toast(dup.name + " è già in lista"); break; }
       put("items", id, Object.assign({}, it, { name, qty, cat }));
       const k = slug(name), known = S.data.catalog[k];
       if (known && known.cat !== cat) put("catalog", k, Object.assign({}, known, { cat }));
@@ -991,6 +1091,13 @@ document.addEventListener("click", e => {
     case "recipe-back": recipeSheet(picks.map(p => p.name + (p.qty ? " " + p.qty : "")).join("\n"), ($("#pickTitle")||{}).value); break;
     case "recipe-add": recipeAdd(); break;
     case "settings": settingsSheet(); break;
+    case "share": shareList(); break;
+    case "clear": clearList(); break;
+    case "uncheck": uncheckAll(); break;
+    case "products": productsSheet(); break;
+    case "prod-edit": productSheet(id); break;
+    case "prod-save": productSave(id); break;
+    case "prod-del": productDel(id); break;
     case "bk-save": bkSave(); break;
     case "bk-copy": bkCopy(); break;
     case "bk-paste": bkPaste(); break;
@@ -1002,6 +1109,10 @@ document.addEventListener("change", e => {
 });
 document.addEventListener("input", e => { if (e.target.id === "servFrom" || e.target.id === "servTo") updateScaled(); });
 $("#sheetBack").addEventListener("click", closeSheet);
+$("#toast").addEventListener("click", e => {
+  if (!e.target.closest("[data-toast]") || !toastFn) return;
+  const f = toastFn; toastFn = null; $("#toast").hidden = true; f();
+});
 document.addEventListener("keydown", e => { if (e.key === "Escape" && !$("#sheet").hidden) closeSheet(); });
 
 /* ---------- Start ---------- */
